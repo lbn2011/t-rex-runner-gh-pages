@@ -1,47 +1,114 @@
-## t-rex-runner
+# T-Rex Runner - Svelte + TypeScript Version
 
-the trex runner game extracted from chrome offline err page.
+This is a modern implementation of the classic T-Rex Runner game from Chrome's offline mode, built with Svelte 5, TypeScript, and Vite.
 
-see the [source](https://cs.chromium.org/chromium/src/components/neterror/resources/offline.js?q=t-rex+package:%5Echromium$&dr=C&l=7) from chromium
+## Project Description
 
+This project converts the original JavaScript T-Rex Runner game to a modern frontend stack using:
 
-[go and enjoy! :smile: ](http://wayou.github.io/t-rex-runner/)
+- Svelte 5+ for component-based UI
+- TypeScript 5+ for type safety
+- Vite 8+ for fast development and build
+- Consola for structured logging
 
-![chrome offline game cast](assets/screenshot.gif)
+## Features
 
-## Interesting Forks/In Chinese, we call it 「花样玩法」
+- Complete game functionality (jumping, ducking, collision detection, scoring)
+- Modern component-based architecture
+- Type-safe codebase
+- Detailed logging with configurable log levels
+- Responsive design
+- Original game assets preserved
 
-- [vianroyal](https://github.com/vianroyal)/[t-rex-runner](https://github.com/vianroyal/t-rex-runner) [Kumamon runner](http://vianroyal.github.io/t-rex-runner/) 
-<br>
+## Getting Started
 
-![](assets/kumamon-runner.gif)
+### Prerequisites
 
-- [xkuga](https://github.com/xkuga)/[t-rex-runner](https://github.com/xkuga/t-rex-runner) [Hello KuGou](http://hellokugou.com/) 
-<br>
+- Node.js 18+
+- pnpm (recommended)
 
-![](assets/hello-kugou.gif)
+### Installation
 
-- [d-nery](https://github.com/d-nery/)/[t-rex-runner](https://github.com/d-nery/t-rex-runner) [Novas coisas](http://d-nery.github.io/t-rex-runner/) 
-<br>
+1. Clone the repository
+2. Install dependencies
 
-![](assets/novas-coisas.gif)
+```bash
+pnpm install
+```
 
-- [chirag64](https://github.com/chirag64)/[t-rex-runner-bot](https://github.com/chirag64/t-rex-runner-bot) [t-rex runner bot](https://chirag64.github.io/t-rex-runner-bot/) 
-<br>
+### Development
 
-![](assets/t-rex-runner-bot.gif)
+Start the development server:
 
-- [19janil](https://github.com/19janil)/[t-rex-runner](https://github.com/19janil/t-rex-runner) [t-rex runner](https://19janil.github.io/t-rex-runner/) 
-<br>
+```bash
+pnpm dev
+```
 
-![](assets/t-rex-runner-19janil.gif)
+The game will be available at `http://localhost:5173`
 
-- [enthus1ast](https://github.com/enthus1ast)/[chromeTrip](https://github.com/enthus1ast/chromeTrip) [Chrome Trip by code0](https://code0.itch.io/chrome-trip) 
-<br>
+### Build
 
-![](https://user-images.githubusercontent.com/13794470/37289691-964618be-260a-11e8-8c4a-6df04d6c490d.gif)
+Build the production version:
 
-- [zouariste](https://github.com/zouariste)/[corona-runner](https://github.com/zouariste/corona-runner) [Corona runner](https://zouariste.github.io/corona-runner/) 
-<br>
+```bash
+pnpm build
+```
 
-![](https://raw.githubusercontent.com/zouariste/corona-runner/gh-pages/assets/corona-runner.gif)
+### Type Checking
+
+Run TypeScript type checks:
+
+```bash
+pnpm run check
+```
+
+## Project Structure
+
+```
+src/
+├── components/          # Svelte components
+│   ├── Trex.svelte      # T-Rex character component
+│   ├── Obstacle.svelte   # Obstacle component
+│   ├── Horizon.svelte    # Ground, clouds, and obstacle management
+│   ├── DistanceMeter.svelte # Score display
+│   ├── GameOverPanel.svelte # Game over screen
+│   └── Game.svelte      # Main game component
+├── config/
+│   ├── gameConfig.ts    # Game configuration
+│   └── obstacleTypes.ts # Obstacle type definitions
+├── types/
+│   └── index.ts         # TypeScript type definitions
+├── utils/
+│   └── gameUtils.ts     # Game utility functions
+├── services/
+│   └── logger.ts        # Consola logging service
+├── App.svelte           # Root component
+├── main.ts              # Application entry point
+└── index.css            # Global styles
+```
+
+## Technical Stack
+
+- **Framework**: Svelte 5
+- **Language**: TypeScript 5
+- **Build Tool**: Vite 8
+- **Logging**: Consola
+- **Code Quality**: ESLint + Prettier
+
+## How to Play
+
+1. Press Space to start the game
+2. Press Space to jump over obstacles
+3. Press Down to duck under obstacles
+4. Try to survive as long as possible and get the highest score
+
+## Acknowledgements
+
+- Original T-Rex Runner game from Chrome's offline mode
+- Svelte team for the excellent framework
+- TypeScript team for type safety
+- Vite team for fast build tools
+
+## License
+
+This project is licensed under the BSD License - see the LICENSE file for details.
