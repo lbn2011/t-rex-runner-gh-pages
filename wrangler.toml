@@ -1,0 +1,14 @@
+# Cloudflare Pages configuration for T-Rex Runner
+name = "trex-runner"
+compatibility_date = "2026-03-08"
+
+# Build settings - Pages projects use these settings from the dashboard
+# Build command: pnpm run build
+# Build output directory: dist
+
+# Environment variables
+[env.production]
+name = "trex-runner-prod"
+
+[env.staging]
+name = "trex-runner-staging"
