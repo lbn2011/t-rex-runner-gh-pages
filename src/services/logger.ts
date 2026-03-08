@@ -175,7 +175,8 @@ class Logger {
     const prefix = `[${entry.module.toUpperCase()}]`;
     const eventTag = `[${entry.eventType.toUpperCase()}]`;
     const componentTag = entry.component ? `[${entry.component}]` : '';
-    const errorTag = entry.errorCode !== undefined ? `[ERR:${entry.errorCode}]` : '';
+    const errorTag =
+      entry.errorCode !== undefined ? `[ERR:${entry.errorCode}]` : '';
 
     const formattedMessage = `${prefix}${eventTag}${componentTag}${errorTag} ${entry.message}`;
 

@@ -11,6 +11,9 @@ export { logStorage } from './logStorage';
 export type { LogConfig, LogEntry, LogFilter } from './loggerConfig';
 export { DEFAULT_LOG_CONFIG } from './loggerConfig';
 
+// Storage exports
+export { storageService } from './storage';
+
 // Game-specific log functions
 export {
   logGameStart,

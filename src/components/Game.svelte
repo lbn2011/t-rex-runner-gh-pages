@@ -31,6 +31,7 @@ import {
   ModuleType,
   EventType,
   ErrorCode,
+  storageService,
   logGameStart,
   logGameOver,
   logGameRestart,
@@ -53,7 +54,7 @@ let gameOverPanelRef: any;
 
 const COMPONENT_NAME = 'Game';
 
-// Game state
+// Game state - load highest score from storage
 let state: GameState = {
   activated: false,
   playing: false,
@@ -64,7 +65,7 @@ let state: GameState = {
   invertTrigger: false,
   playingIntro: false,
   distanceRan: 0,
-  highestScore: 0,
+  highestScore: storageService.getHighScore(),
   currentSpeed: gameConfig.SPEED,
   runningTime: 0,
   playCount: 0,
@@ -676,13 +677,14 @@ function gameOver () {
 
   // Update high score
   const previousHighScore = state.highestScore;
-  if (state.distanceRan > state.highestScore) {
-    state.highestScore = Math.ceil(state.distanceRan);
+  const newScore = Math.ceil(state.distanceRan);
+  if (storageService.updateHighScore(newScore)) {
+    state.highestScore = newScore;
     if (distanceMeterRef) {
       distanceMeterRef.setHighScore(state.highestScore);
     }
 
-    logger.info(ModuleType.GAME, EventType.SCORE_UPDATE, 'New high score achieved', {
+    logger.info(ModuleType.GAME, EventType.SCORE_UPDATE, 'New high score achieved and saved', {
       component: COMPONENT_NAME,
       context: {
         previousHighScore,
@@ -915,6 +917,16 @@ function onVisibilityChange (e: Event) {
 // Component lifecycle
 onMount(() => {
   logComponentMount(COMPONENT_NAME, { container: !!container });
+
+  // Load high score from storage on mount
+  const storedHighScore = storageService.getHighScore();
+  if (storedHighScore > state.highestScore) {
+    state.highestScore = storedHighScore;
+    logger.info(ModuleType.GAME, EventType.INIT, 'High score loaded from storage', {
+      component: COMPONENT_NAME,
+      context: { highScore: state.highestScore },
+    });
+  }
 
   // Ensure Runner.imageSprite is available
   (window as any).Runner = (window as any).Runner || {};
