@@ -1,6 +1,16 @@
 <script lang="ts">
-import { onMount } from 'svelte';
+import { onMount, onDestroy } from 'svelte';
 import type { SpriteDefinition } from '../types';
+import {
+  logger,
+  ModuleType,
+  EventType,
+  ErrorCode,
+  logScore,
+  logComponentMount,
+  logComponentUnmount,
+  logComponentInit,
+} from '../services';
 
 export let canvas: HTMLCanvasElement;
 export let textSpritePos: SpriteDefinition;
@@ -15,77 +25,201 @@ let digits = [0, 0, 0, 0, 0];
 let highScoreDigits = [0, 0, 0, 0, 0];
 let digitWidth = 10;
 
-// 初始化
-function init() {
-  canvasCtx = canvas.getContext('2d')!;
-  calcXPos(canvasWidth);
+const COMPONENT_NAME = 'DistanceMeter';
+
+// Initialize DistanceMeter
+function init () {
+  logger.time('distance-meter-init', ModuleType.SCORE);
+
+  try {
+    canvasCtx = canvas.getContext('2d')!;
+    if (!canvasCtx) {
+      throw new Error('Failed to get 2D canvas context');
+    }
+
+    calcXPos(canvasWidth);
+
+    logger.setComponentContext(COMPONENT_NAME, {
+      canvasWidth,
+      xPos,
+      yPos,
+      digitWidth,
+    });
+
+    logComponentInit(COMPONENT_NAME, {
+      canvasDimensions: { width: canvas.width, height: canvas.height },
+      textSpritePos,
+      initialPosition: { x: xPos, y: yPos },
+    });
+
+    logger.timeEnd('distance-meter-init', ModuleType.SCORE);
+  } catch (error) {
+    logger.error(ModuleType.SCORE, EventType.ERROR, 'Failed to initialize DistanceMeter', {
+      component: COMPONENT_NAME,
+      errorCode: ErrorCode.CONFIGURATION_ERROR,
+      context: { error: (error as Error).message },
+    });
+    throw error;
+  }
 }
 
-// 计算X位置
-export function calcXPos(width: number) {
+// Calculate X position
+export function calcXPos (width: number) {
+  const previousX = xPos;
   xPos = width - digits.length * digitWidth - 10;
+
+  logger.trace(ModuleType.SCORE, EventType.INIT, 'Position recalculated', {
+    component: COMPONENT_NAME,
+    context: { canvasWidth: width, previousX, newX: xPos },
+  });
 }
 
-// 更新距离
-export function update(deltaTime: number, distance: number): boolean {
+// Update distance
+export function update (deltaTime: number, distance: number): boolean {
   const newDistance = Math.floor(distance);
+  let milestoneReached = false;
+
   if (newDistance !== currentDistance) {
+    const previousDistance = currentDistance;
     currentDistance = newDistance;
     updateDigits(currentDistance, digits);
 
-    // 检查是否达到新的成就
+    // Log score update
+    logScore(currentDistance, {
+      deltaTime,
+      previousDistance,
+      increment: currentDistance - previousDistance,
+    });
+
+    logger.debug(ModuleType.SCORE, EventType.SCORE_UPDATE, 'Distance updated', {
+      component: COMPONENT_NAME,
+      context: {
+        previousDistance,
+        currentDistance,
+        deltaTime,
+        digits: [...digits],
+      },
+    });
+
+    // Check if new achievement reached
     if (currentDistance > 0 && currentDistance % 100 === 0) {
-      return true;
+      milestoneReached = true;
+
+      logger.info(ModuleType.SCORE, EventType.SCORE_UPDATE, 'Milestone reached', {
+        component: COMPONENT_NAME,
+        context: {
+          milestone: currentDistance,
+          highScore,
+        },
+      });
     }
   }
+
   draw();
-  return false;
+  return milestoneReached;
 }
 
-// 更新数字
-function updateDigits(value: number, digitArray: number[]) {
+// Update digits
+function updateDigits (value: number, digitArray: number[]) {
   const str = value.toString().padStart(digitArray.length, '0');
   for (let i = 0; i < digitArray.length; i++) {
     digitArray[i] = parseInt(str[i]);
   }
+
+  logger.trace(ModuleType.SCORE, EventType.INIT, 'Digits updated', {
+    component: COMPONENT_NAME,
+    context: { value, digitArray: [...digitArray] },
+  });
 }
 
-// 重置
-export function reset(newHighScore: number) {
+// Reset
+export function reset (newHighScore: number) {
+  const previousDistance = currentDistance;
+  const previousHighScore = highScore;
+
   currentDistance = 0;
   highScore = newHighScore;
   updateDigits(0, digits);
   updateDigits(highScore, highScoreDigits);
+
+  logger.info(ModuleType.SCORE, EventType.RESTART, 'Distance meter reset', {
+    component: COMPONENT_NAME,
+    context: {
+      previousDistance,
+      previousHighScore,
+      newHighScore,
+    },
+  });
+
   draw();
 }
 
-// 设置最高分
-export function setHighScore(score: number) {
+// Set high score
+export function setHighScore (score: number) {
+  const previousHighScore = highScore;
   highScore = score;
   updateDigits(highScore, highScoreDigits);
+
+  logger.info(ModuleType.SCORE, EventType.SCORE_UPDATE, 'High score updated', {
+    component: COMPONENT_NAME,
+    context: {
+      previousHighScore,
+      newHighScore: highScore,
+    },
+  });
 }
 
-// 获取实际距离
-export function getActualDistance(distance: number): number {
-  return Math.floor(distance / 100);
+// Get actual distance
+export function getActualDistance (distance: number): number {
+  const actualDistance = Math.floor(distance / 100);
+
+  logger.trace(ModuleType.SCORE, EventType.INIT, 'Actual distance calculated', {
+    component: COMPONENT_NAME,
+    context: { rawDistance: distance, actualDistance },
+  });
+
+  return actualDistance;
 }
 
-// 绘制距离计量器
-function draw() {
-  if (!canvasCtx) return;
+// Draw distance meter
+function draw () {
+  if (!canvasCtx) {
+    logger.warn(ModuleType.RENDER, EventType.DRAW, 'Canvas context not available', {
+      component: COMPONENT_NAME,
+      errorCode: ErrorCode.CANVAS_CONTEXT_LOST,
+    });
+    return;
+  }
 
-  // 绘制当前距离
-  drawDigits(digits, xPos, yPos);
+  try {
+    // Draw current distance
+    drawDigits(digits, xPos, yPos);
 
-  // 绘制最高分
-  if (highScore > 0) {
-    const highScoreX = xPos - digitWidth * highScoreDigits.length - 20;
-    drawDigits(highScoreDigits, highScoreX, yPos);
+    // Draw high score
+    if (highScore > 0) {
+      const highScoreX = xPos - digitWidth * highScoreDigits.length - 20;
+      drawDigits(highScoreDigits, highScoreX, yPos);
+    }
+
+    logger.trace(ModuleType.RENDER, EventType.DRAW, 'Distance meter drawn', {
+      component: COMPONENT_NAME,
+      context: {
+        currentDistance,
+        highScore,
+        position: { x: xPos, y: yPos },
+      },
+    });
+  } catch (error) {
+    logger.error(ModuleType.RENDER, EventType.DRAW, 'Failed to draw distance meter', {
+      component: COMPONENT_NAME,
+      errorCode: ErrorCode.RENDER_ERROR,
+      context: { error: (error as Error).message },
+    });
   }
 }
 
-// 绘制数字
-function drawDigits(digitArray: number[], x: number, y: number) {
+// Draw digits
+function drawDigits (digitArray: number[], x: number, y: number) {
   const sourceWidth = 10;
   const sourceHeight = 13;
 
@@ -107,10 +241,21 @@ function drawDigits(digitArray: number[], x: number, y: number) {
   });
 }
 
-// 组件挂载时初始化
+// Component lifecycle
 onMount(() => {
+  logComponentMount(COMPONENT_NAME, { canvas: !!canvas, canvasWidth });
   init();
+});
+
+onDestroy(() => {
+  logComponentUnmount(COMPONENT_NAME, {
+    finalState: {
+      currentDistance,
+      highScore,
+    },
+  });
+  logger.clearComponentContext(COMPONENT_NAME);
 });
 </script>
 
-<!-- 距离计量器组件 -->
+<!-- Distance Meter Component -->

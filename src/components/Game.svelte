@@ -26,12 +26,22 @@ import {
   updateCanvasScaling,
   vibrate,
 } from '../utils/gameUtils';
-import { logGameStart, logGameOver, logCollision, logJump } from '../services/logger';
-
-// 全局对象类型声明
-declare type FrameRequestCallback = (time: number) => void;
-declare const requestAnimationFrame: (callback: FrameRequestCallback) => number;
-declare const cancelAnimationFrame: (id: number) => void;
+import {
+  logger,
+  ModuleType,
+  EventType,
+  ErrorCode,
+  logGameStart,
+  logGameOver,
+  logGameRestart,
+  logCollision,
+  logJump,
+  logInput,
+  logSpeedChange,
+  logComponentMount,
+  logComponentUnmount,
+  logComponentInit,
+} from '../services';
 
 let container: HTMLElement;
 let canvas: HTMLCanvasElement;
@@ -41,7 +51,9 @@ let horizonRef: any;
 let distanceMeterRef: any;
 let gameOverPanelRef: any;
 
-// 游戏状态
+const COMPONENT_NAME = 'Game';
+
+// Game state
 let state: GameState = {
   activated: false,
   playing: false,
@@ -58,7 +70,7 @@ let state: GameState = {
   playCount: 0,
 };
 
-// 游戏数据
+// Game data
 let dimensions = { ...defaultDimensions };
 let spriteDef = IS_HIDPI ? spriteDefinition.HDPI : spriteDefinition.LDPI;
 let audioContext: any = null;
@@ -69,58 +81,116 @@ let time: number = 0;
 let msPerFrame = 1000 / FPS;
 let resizeTimerId: number | null = null;
 
-// 初始化
-function init() {
-  // 隐藏静态图标
-  const icon = document.querySelector('.icon') as HTMLElement;
-  if (icon) {
-    icon.style.visibility = 'hidden';
+// Initialize
+function init () {
+  logger.time('game-init', ModuleType.GAME);
+
+  try {
+    // Hide static icon
+    const icon = document.querySelector('.icon') as HTMLElement;
+    if (icon) {
+      icon.style.visibility = 'hidden';
+    }
+
+    adjustDimensions();
+    setSpeed();
+
+    if (canvas) {
+      canvas.width = dimensions.WIDTH;
+      canvas.height = dimensions.HEIGHT;
+
+      canvasCtx = canvas.getContext('2d')!;
+      if (!canvasCtx) {
+        throw new Error('Failed to get 2D canvas context');
+      }
+
+      canvasCtx.fillStyle = '#f7f7f7';
+      canvasCtx.fillRect(0, 0, dimensions.WIDTH, dimensions.HEIGHT);
+      updateCanvasScaling(canvas);
+    }
+
+    // Set component context for logging
+    logger.setComponentContext(COMPONENT_NAME, {
+      dimensions,
+      isHIDPI: IS_HIDPI,
+      isMobile: IS_MOBILE,
+      isIOS: IS_IOS,
+    });
+
+    logComponentInit(COMPONENT_NAME, {
+      canvasDimensions: { width: dimensions.WIDTH, height: dimensions.HEIGHT },
+      spriteDef,
+      gameConfig,
+    });
+
+    startListening();
+    update();
+
+    window.addEventListener(events.RESIZE, debounceResize);
+
+    logger.info(ModuleType.GAME, EventType.INIT, 'Game initialized', {
+      component: COMPONENT_NAME,
+      context: {
+        dimensions,
+        isHIDPI: IS_HIDPI,
+        isMobile: IS_MOBILE,
+      },
+    });
+
+    logger.timeEnd('game-init', ModuleType.GAME);
+  } catch (error) {
+    logger.error(ModuleType.GAME, EventType.ERROR, 'Failed to initialize game', {
+      component: COMPONENT_NAME,
+      errorCode: ErrorCode.CONFIGURATION_ERROR,
+      context: { error: (error as Error).message },
+    });
+    throw error;
   }
-
-  adjustDimensions();
-  setSpeed();
-
-  if (canvas) {
-    canvas.width = dimensions.WIDTH;
-    canvas.height = dimensions.HEIGHT;
-
-    canvasCtx = canvas.getContext('2d')!;
-    canvasCtx.fillStyle = '#f7f7f7';
-    canvasCtx.fillRect(0, 0, dimensions.WIDTH, dimensions.HEIGHT);
-    updateCanvasScaling(canvas);
-  }
-
-  startListening();
-  update();
-
-  window.addEventListener(events.RESIZE, debounceResize);
 }
 
-// 防抖调整大小
-function debounceResize() {
+// Debounce resize
+function debounceResize () {
   if (!resizeTimerId) {
     resizeTimerId = window.setInterval(adjustDimensions, 250);
+
+    logger.debug(ModuleType.UI, EventType.INIT, 'Resize debounce started', {
+      component: COMPONENT_NAME,
+    });
   }
 }
 
-// 调整游戏空间维度
-function adjustDimensions() {
+// Adjust game space dimensions
+function adjustDimensions () {
   if (resizeTimerId) {
     clearInterval(resizeTimerId);
     resizeTimerId = null;
+
+    logger.debug(ModuleType.UI, EventType.INIT, 'Resize debounce cleared', {
+      component: COMPONENT_NAME,
+    });
   }
 
   const boxStyles = window.getComputedStyle(container);
   const padding = Number(boxStyles.paddingLeft.substr(0, boxStyles.paddingLeft.length - 2));
 
+  const previousWidth = dimensions.WIDTH;
   dimensions.WIDTH = container.offsetWidth - padding * 2;
-  dimensions.WIDTH = Math.min(defaultDimensions.WIDTH, dimensions.WIDTH); // 街机模式
+  dimensions.WIDTH = Math.min(defaultDimensions.WIDTH, dimensions.WIDTH); // Arcade mode
+
+  logger.debug(ModuleType.UI, EventType.INIT, 'Dimensions adjusted', {
+    component: COMPONENT_NAME,
+    context: {
+      previousWidth,
+      newWidth: dimensions.WIDTH,
+      padding,
+    },
+  });
 
   if (state.activated) {
     setArcadeModeContainerScale();
   }
 
-  // 重绘元素到画布
+  // Redraw elements to canvas
   if (canvas) {
     canvas.width = dimensions.WIDTH;
     canvas.height = dimensions.HEIGHT;
@@ -139,7 +209,7 @@ function adjustDimensions() {
       trexRef.update(0);
     }
 
-    // 外部容器和距离计量器
+    // External container and distance meter
     if (state.playing || state.crashed || state.paused) {
       const containerEl = container.querySelector(`.${classes.CONTAINER}`) as HTMLElement;
       if (containerEl) {
@@ -156,7 +226,7 @@ function adjustDimensions() {
       }
     }
 
-    // 游戏结束面板
+    // Game over panel
     if (state.crashed && gameOverPanelRef) {
       gameOverPanelRef.updateDimensions(dimensions.WIDTH);
       gameOverPanelRef.draw();
@@ -164,18 +234,19 @@ function adjustDimensions() {
   }
 }
 
-// 清除画布
-function clearCanvas() {
+// Clear canvas
+function clearCanvas () {
   if (canvasCtx) {
     canvasCtx.clearRect(0, 0, dimensions.WIDTH, dimensions.HEIGHT);
   }
 }
 
-// 设置游戏速度
-function setSpeed(optSpeed?: number) {
+// Set game speed
+function setSpeed (optSpeed?: number) {
+  const previousSpeed = state.currentSpeed;
   const speed = optSpeed || state.currentSpeed;
 
-  // 在较小的移动屏幕上降低速度
+  // Reduce speed on smaller mobile screens
   if (dimensions.WIDTH < defaultDimensions.WIDTH) {
     const mobileSpeed =
       ((speed * dimensions.WIDTH) / defaultDimensions.WIDTH) * gameConfig.MOBILE_SPEED_COEFFICIENT;
@@ -183,17 +254,38 @@ function setSpeed(optSpeed?: number) {
   } else if (optSpeed) {
     state.currentSpeed = optSpeed;
   }
+
+  if (previousSpeed !== state.currentSpeed) {
+    logSpeedChange(state.currentSpeed, {
+      previousSpeed,
+      isMobile: dimensions.WIDTH < defaultDimensions.WIDTH,
+    });
+
+    logger.debug(ModuleType.GAME, EventType.SPEED_CHANGE, 'Game speed updated', {
+      component: COMPONENT_NAME,
+      context: {
+        previousSpeed,
+        currentSpeed: state.currentSpeed,
+        isMobile: dimensions.WIDTH < defaultDimensions.WIDTH,
+      },
+    });
+  }
 }
 
-// 开始游戏介绍
-function playIntro() {
+// Play game intro
+function playIntro () {
   if (!state.activated && !state.crashed) {
     state.playingIntro = true;
     if (trexRef) {
       trexRef.playingIntro = true;
     }
 
-    // CSS动画定义
+    logger.info(ModuleType.GAME, EventType.START, 'Game intro started', {
+      component: COMPONENT_NAME,
+      context: { playingIntro: true },
+    });
+
+    // CSS animation definition
     const keyframes =
       '@-webkit-keyframes intro { ' +
       'from { width:' +
@@ -204,7 +296,7 @@ function playIntro() {
       'px }' +
       '}';
 
-    // 创建样式表并放入html头部
+    // Create stylesheet and put in html head
     const sheet = document.createElement('style');
     sheet.innerHTML = keyframes;
     document.head.appendChild(sheet);
@@ -223,8 +315,8 @@ function playIntro() {
   }
 }
 
-// 开始游戏
-function startGame() {
+// Start game
+function startGame () {
   setArcadeMode();
   state.runningTime = 0;
   state.playingIntro = false;
@@ -237,26 +329,38 @@ function startGame() {
   }
   state.playCount++;
 
-  // 处理标签页切换。暂停当前游戏。
+  logger.info(ModuleType.GAME, EventType.START, 'Game started', {
+    component: COMPONENT_NAME,
+    context: {
+      playCount: state.playCount,
+      currentSpeed: state.currentSpeed,
+    },
+  });
+
+  // Handle tab switching. Pause current game.
   document.addEventListener(events.VISIBILITY, onVisibilityChange);
   window.addEventListener(events.BLUR, onVisibilityChange);
   window.addEventListener(events.FOCUS, onVisibilityChange);
 }
 
-// 设置街机模式
-function setArcadeMode() {
+// Set arcade mode
+function setArcadeMode () {
   document.body.classList.add(classes.ARCADE_MODE);
   setArcadeModeContainerScale();
+
+  logger.debug(ModuleType.UI, EventType.INIT, 'Arcade mode set', {
+    component: COMPONENT_NAME,
+  });
 }
 
-// 设置街机模式容器缩放
-function setArcadeModeContainerScale() {
+// Set arcade mode container scale
+function setArcadeModeContainerScale () {
   const windowHeight = window.innerHeight;
   const scaleHeight = windowHeight / dimensions.HEIGHT;
   const scaleWidth = window.innerWidth / dimensions.WIDTH;
   const scale = Math.max(1, Math.min(scaleHeight, scaleWidth));
   const scaledCanvasHeight = dimensions.HEIGHT * scale;
-  // 将游戏容器定位在可用垂直窗口高度的10%处，减去游戏容器高度。
+  // Position game container at 10% of available vertical window height, minus game container height.
   const translateY =
     Math.ceil(
       Math.max(
@@ -271,10 +375,15 @@ function setArcadeModeContainerScale() {
   if (containerEl) {
     containerEl.style.transform = `scale(${cssScale}) translateY(${translateY}px)`;
   }
+
+  logger.trace(ModuleType.UI, EventType.INIT, 'Arcade mode scale set', {
+    component: COMPONENT_NAME,
+    context: { scale, translateY, cssScale },
+  });
 }
 
-// 游戏主循环
-function update() {
+// Game main loop
+function update () {
   updatePending = false;
 
   const now = getTimeStamp();
@@ -291,12 +400,12 @@ function update() {
     state.runningTime += deltaTime;
     const hasObstacles = state.runningTime > gameConfig.CLEAR_TIME;
 
-    // 第一次跳跃触发介绍。
+    // First jump triggers intro.
     if (trexRef && trexRef.jumpCount == 1 && !state.playingIntro) {
       playIntro();
     }
 
-    // 直到介绍结束，地平线才会移动。
+    // Horizon doesn't move until intro ends.
     if (state.playingIntro) {
       if (horizonRef) {
         horizonRef.update(0, state.currentSpeed, hasObstacles);
@@ -308,12 +417,14 @@ function update() {
       }
     }
 
-    // 检查碰撞。
+    // Check for collisions.
     let collision: false | [CollisionBox, CollisionBox] = false;
+    let collidedObstacleType = 'unknown';
     if (hasObstacles && trexRef && horizonRef) {
       const obstacles = horizonRef.getObstacles();
       if (obstacles.length > 0) {
         collision = checkForCollision(obstacles[0], trexRef.getTrex());
+        collidedObstacleType = obstacles[0]?.typeConfig?.type || 'unknown';
       }
     }
 
@@ -324,7 +435,7 @@ function update() {
         state.currentSpeed += gameConfig.ACCELERATION;
       }
     } else {
-      logCollision();
+      logCollision(collidedObstacleType);
       gameOver();
     }
 
@@ -337,7 +448,7 @@ function update() {
       playSound(soundFx.SCORE);
     }
 
-    // 夜间模式。
+    // Night mode.
     if (state.invertTimer > gameConfig.INVERT_FADE_DURATION) {
       state.invertTimer = 0;
       state.invertTrigger = false;
@@ -356,6 +467,11 @@ function update() {
         if (state.invertTrigger && state.invertTimer === 0) {
           state.invertTimer += deltaTime;
           invert();
+
+          logger.debug(ModuleType.GAME, EventType.ANIMATION, 'Night mode triggered', {
+            component: COMPONENT_NAME,
+            context: { actualDistance, invertDistance: gameConfig.INVERT_DISTANCE },
+          });
         }
       }
     }
@@ -372,51 +488,56 @@ function update() {
   }
 }
 
-// 调度下一次更新
-function scheduleNextUpdate() {
+// Schedule next update
+function scheduleNextUpdate () {
   if (!updatePending) {
     updatePending = true;
-    raqId = requestAnimationFrame(update);
+    raqId = window.requestAnimationFrame(update);
   }
 }
 
-// 事件处理程序
-function handleEvent(e: Event) {
+// Event handler
+function handleEvent (e: Event) {
   switch (e.type) {
-    case events.KEYDOWN:
-    case events.TOUCHSTART:
-    case events.MOUSEDOWN:
-      onKeyDown(e);
-      break;
-    case events.KEYUP:
-    case events.TOUCHEND:
-    case events.MOUSEUP:
-      onKeyUp(e);
-      break;
+  case events.KEYDOWN:
+  case events.TOUCHSTART:
+  case events.MOUSEDOWN:
+    onKeyDown(e);
+    break;
+  case events.KEYUP:
+  case events.TOUCHEND:
+  case events.MOUSEUP:
+    onKeyUp(e);
+    break;
   }
 }
 
-// 开始监听
-function startListening() {
-  // 键盘
+// Start listening
+function startListening () {
+  // Keyboard
   document.addEventListener(events.KEYDOWN, handleEvent);
   document.addEventListener(events.KEYUP, handleEvent);
 
   if (IS_MOBILE) {
-    // 移动设备触摸
+    // Mobile touch
     const containerEl = container.querySelector(`.${classes.CONTAINER}`);
     if (containerEl) {
       containerEl.addEventListener(events.TOUCHSTART, handleEvent);
     }
   } else {
-    // 鼠标
+    // Mouse
     document.addEventListener(events.MOUSEDOWN, handleEvent);
     document.addEventListener(events.MOUSEUP, handleEvent);
   }
+
+  logger.debug(ModuleType.INPUT, EventType.INIT, 'Input listeners started', {
+    component: COMPONENT_NAME,
+    context: { isMobile: IS_MOBILE },
+  });
 }
 
-// 停止监听
-function stopListening() {
+// Stop listening
+function stopListening () {
   document.removeEventListener(events.KEYDOWN, handleEvent);
   document.removeEventListener(events.KEYUP, handleEvent);
 
@@ -429,27 +550,43 @@ function stopListening() {
     document.removeEventListener(events.MOUSEDOWN, handleEvent);
     document.removeEventListener(events.MOUSEUP, handleEvent);
   }
+
+  logger.debug(ModuleType.INPUT, EventType.INIT, 'Input listeners stopped', {
+    component: COMPONENT_NAME,
+  });
 }
 
-// 处理按键按下
-function onKeyDown(e: Event) {
-  // 防止在移动设备上点击时原生页面滚动
+// Handle key down
+function onKeyDown (e: Event) {
+  // Prevent native page scrolling on mobile when tapping
   if (IS_MOBILE && state.playing) {
     e.preventDefault();
   }
 
   const keyEvent = e as KeyboardEvent;
+
+  logInput(keyEvent.keyCode, keyEvent.key || 'unknown', {
+    eventType: e.type,
+    isPlaying: state.playing,
+    isCrashed: state.crashed,
+  });
+
   if (!state.crashed && (keycodes.JUMP[keyEvent.keyCode] || e.type == events.TOUCHSTART)) {
     if (!state.playing) {
       loadSounds();
       state.playing = true;
       update();
       logGameStart();
+
+      logger.info(ModuleType.GAME, EventType.START, 'Game started by user input', {
+        component: COMPONENT_NAME,
+        context: { inputType: e.type, keyCode: keyEvent.keyCode },
+      });
     }
-    // 第一次开始游戏时播放音效并跳跃。
+    // Play sound and jump on first game start.
     if (trexRef && !trexRef.jumping && !trexRef.ducking) {
       playSound(soundFx.BUTTON_PRESS);
-      logJump();
+      logJump(trexRef.yPos, { speed: state.currentSpeed });
       trexRef.startJump(state.currentSpeed);
     }
   }
@@ -465,17 +602,17 @@ function onKeyDown(e: Event) {
   if (state.playing && !state.crashed && keycodes.DUCK[keyEvent.keyCode]) {
     e.preventDefault();
     if (trexRef && trexRef.jumping) {
-      // 快速下落，仅在未按下跳跃键时激活。
+      // Speed drop, only activates when jump key is not pressed.
       trexRef.setSpeedDrop();
     } else if (trexRef && !trexRef.jumping && !trexRef.ducking) {
-      // 下蹲。
+      // Duck.
       trexRef.setDuck(true);
     }
   }
 }
 
-// 处理按键释放
-function onKeyUp(e: Event) {
+// Handle key up
+function onKeyUp (e: Event) {
   const keyEvent = e as KeyboardEvent;
   const keyCode = String(keyEvent.keyCode);
   const isjumpKey = keycodes.JUMP[keyCode] || e.type == events.TOUCHEND || e.type == events.MOUSEUP;
@@ -490,7 +627,7 @@ function onKeyUp(e: Event) {
       trexRef.setDuck(false);
     }
   } else if (state.crashed) {
-    // 检查是否经过足够的时间后才允许跳跃键重新开始。
+    // Check if enough time has passed before allowing jump key to restart.
     const deltaTime = getTimeStamp() - time;
 
     if (
@@ -501,7 +638,7 @@ function onKeyUp(e: Event) {
       restart();
     }
   } else if (state.paused && isjumpKey) {
-    // 重置跳跃状态
+    // Reset jump state
     if (trexRef) {
       trexRef.reset();
     }
@@ -509,8 +646,8 @@ function onKeyUp(e: Event) {
   }
 }
 
-// 检查是否为画布上的左键点击
-function isLeftClickOnCanvas(e: Event): boolean {
+// Check if left click on canvas
+function isLeftClickOnCanvas (e: Event): boolean {
   const mouseEvent = e as MouseEvent;
   return (
     mouseEvent.button != null &&
@@ -520,13 +657,13 @@ function isLeftClickOnCanvas(e: Event): boolean {
   );
 }
 
-// 游戏是否正在运行
-function isRunning(): boolean {
+// Check if game is running
+function isRunning (): boolean {
   return !!raqId;
 }
 
-// 游戏结束
-function gameOver() {
+// Game over
+function gameOver () {
   playSound(soundFx.HIT);
   vibrate(200);
 
@@ -537,35 +674,62 @@ function gameOver() {
     trexRef.update(100, TrexStatus.CRASHED);
   }
 
-  // 游戏结束面板
-  if (!gameOverPanelRef) {
-    // 游戏结束面板将在组件挂载时创建
-  }
-
-  // 更新最高分
+  // Update high score
+  const previousHighScore = state.highestScore;
   if (state.distanceRan > state.highestScore) {
     state.highestScore = Math.ceil(state.distanceRan);
     if (distanceMeterRef) {
       distanceMeterRef.setHighScore(state.highestScore);
     }
+
+    logger.info(ModuleType.GAME, EventType.SCORE_UPDATE, 'New high score achieved', {
+      component: COMPONENT_NAME,
+      context: {
+        previousHighScore,
+        newHighScore: state.highestScore,
+        distanceRan: state.distanceRan,
+      },
+    });
   }
 
-  logGameOver(state.highestScore);
+  logGameOver(state.highestScore, {
+    distanceRan: state.distanceRan,
+    runningTime: state.runningTime,
+    playCount: state.playCount,
+  });
 
-  // 重置时钟。
+  logger.info(ModuleType.GAME, EventType.GAME_OVER, 'Game over', {
+    component: COMPONENT_NAME,
+    context: {
+      distanceRan: state.distanceRan,
+      highestScore: state.highestScore,
+      runningTime: state.runningTime,
+      currentSpeed: state.currentSpeed,
+    },
+  });
+
+  // Reset clock.
   time = getTimeStamp();
 }
 
-// 停止游戏
-function stop() {
+// Stop game
+function stop () {
   state.playing = false;
   state.paused = true;
-  cancelAnimationFrame(raqId);
+  window.cancelAnimationFrame(raqId);
   raqId = 0;
+
+  logger.debug(ModuleType.GAME, EventType.PAUSE, 'Game stopped', {
+    component: COMPONENT_NAME,
+    context: {
+      distanceRan: state.distanceRan,
+      runningTime: state.runningTime,
+    },
+  });
 }
 
-// 播放游戏
-function play() {
+// Play game
+function play () {
   if (!state.crashed) {
     state.playing = true;
     state.paused = false;
@@ -574,12 +738,22 @@ function play() {
     }
     time = getTimeStamp();
     update();
+
+    logger.debug(ModuleType.GAME, EventType.RESUME, 'Game resumed', {
+      component: COMPONENT_NAME,
+    });
   }
 }
 
-// 重新开始游戏
-function restart() {
+// Restart game
+function restart () {
   if (!raqId) {
+    logGameRestart({
+      previousHighScore: state.highestScore,
+      previousDistance: state.distanceRan,
+      playCount: state.playCount,
+    });
+
     state.playCount++;
     state.runningTime = 0;
     state.playing = true;
@@ -587,11 +761,14 @@ function restart() {
     state.distanceRan = 0;
     setSpeed(gameConfig.SPEED);
     time = getTimeStamp();
+
     const containerEl = container.querySelector(`.${classes.CONTAINER}`);
     if (containerEl) {
       containerEl.classList.remove(classes.CRASHED);
     }
+
     clearCanvas();
+
     if (distanceMeterRef) {
       distanceMeterRef.reset(state.highestScore);
     }
@@ -601,63 +778,115 @@ function restart() {
     if (trexRef) {
       trexRef.reset();
     }
+
     playSound(soundFx.BUTTON_PRESS);
     invert(true);
     update();
+
+    logger.info(ModuleType.GAME, EventType.RESTART, 'Game restarted', {
+      component: COMPONENT_NAME,
+      context: {
+        playCount: state.playCount,
+        highestScore: state.highestScore,
+      },
+    });
   }
 }
 
-// 加载音效
-function loadSounds() {
+// Load sounds
+function loadSounds () {
   if (!IS_IOS) {
-    audioContext = new (window as any).AudioContext();
+    try {
+      audioContext = new (window as any).AudioContext();
 
-    const resourceTemplate = document.getElementById(gameConfig.RESOURCE_TEMPLATE_ID) as any;
-    if (resourceTemplate) {
-      const content = resourceTemplate.content;
-      if (content) {
-        for (const sound in sounds) {
-          const soundId = sounds[sound as keyof typeof sounds];
-          const soundElement = content.getElementById(soundId);
-          if (soundElement) {
-            let soundSrc = soundElement.src;
-            soundSrc = soundSrc.substr(soundSrc.indexOf(',') + 1);
-            const buffer = decodeBase64ToArrayBuffer(soundSrc);
+      const resourceTemplate = document.getElementById(gameConfig.RESOURCE_TEMPLATE_ID) as any;
+      if (resourceTemplate) {
+        const content = resourceTemplate.content;
+        if (content) {
+          let loadedSounds = 0;
+          const totalSounds = Object.keys(sounds).length;
 
-            // 异步，所以数组中没有顺序保证。
-            audioContext.decodeAudioData(buffer, (audioData: any) => {
-              soundFx[sound as keyof SoundFx] = audioData;
-            });
+          for (const sound in sounds) {
+            const soundId = sounds[sound as keyof typeof sounds];
+            const soundElement = content.getElementById(soundId);
+            if (soundElement) {
+              let soundSrc = soundElement.src;
+              soundSrc = soundSrc.substr(soundSrc.indexOf(',') + 1);
+              const buffer = decodeBase64ToArrayBuffer(soundSrc);
+
+              // Async, so no order guarantee in array.
+              audioContext.decodeAudioData(buffer, (audioData: any) => {
+                soundFx[sound as keyof SoundFx] = audioData;
+                loadedSounds++;
+
+                if (loadedSounds === totalSounds) {
+                  logger.debug(ModuleType.AUDIO, EventType.INIT, 'All sounds loaded', {
+                    component: COMPONENT_NAME,
+                    context: { totalSounds },
+                  });
+                }
+              });
+            }
           }
         }
       }
+
+      logger.debug(ModuleType.AUDIO, EventType.INIT, 'Audio context created', {
+        component: COMPONENT_NAME,
+      });
+    } catch (error) {
+      logger.error(ModuleType.AUDIO, EventType.ERROR, 'Failed to load sounds', {
+        component: COMPONENT_NAME,
+        errorCode: ErrorCode.AUDIO_INIT_FAILED,
+        context: { error: (error as Error).message },
+      });
     }
   }
 }
 
-// 播放音效
-function playSound(soundBuffer?: any) {
+// Play sound
+function playSound (soundBuffer?: any) {
   if (soundBuffer && audioContext) {
-    const sourceNode = audioContext.createBufferSource();
-    sourceNode.buffer = soundBuffer;
-    sourceNode.connect(audioContext.destination);
-    sourceNode.start(0);
+    try {
+      const sourceNode = audioContext.createBufferSource();
+      sourceNode.buffer = soundBuffer;
+      sourceNode.connect(audioContext.destination);
+      sourceNode.start(0);
+
+      logger.trace(ModuleType.AUDIO, EventType.INIT, 'Sound played', {
+        component: COMPONENT_NAME,
+      });
+    } catch (error) {
+      logger.warn(ModuleType.AUDIO, EventType.WARNING, 'Failed to play sound', {
+        component: COMPONENT_NAME,
+        context: { error: (error as Error).message },
+      });
+    }
   }
 }
 
-// 反转当前页面/画布颜色
-function invert(reset?: boolean) {
+// Invert current page/canvas colors
+function invert (reset?: boolean) {
   if (reset) {
     document.body.classList.toggle(classes.INVERTED, false);
     state.invertTimer = 0;
     state.inverted = false;
+
+    logger.debug(ModuleType.GAME, EventType.ANIMATION, 'Night mode reset', {
+      component: COMPONENT_NAME,
+    });
   } else {
     state.inverted = document.body.classList.toggle(classes.INVERTED, state.invertTrigger);
+
+    logger.debug(ModuleType.GAME, EventType.ANIMATION, 'Night mode toggled', {
+      component: COMPONENT_NAME,
+      context: { inverted: state.inverted, invertTrigger: state.invertTrigger },
+    });
   }
 }
 
-// 标签页可见性变化
-function onVisibilityChange(e: Event) {
+// Tab visibility change
+function onVisibilityChange (e: Event) {
   const webkitHidden = (document as any).webkitHidden;
   if (
     document.hidden ||
@@ -666,32 +895,65 @@ function onVisibilityChange(e: Event) {
     document.visibilityState != 'visible'
   ) {
     stop();
+
+    logger.debug(ModuleType.GAME, EventType.PAUSE, 'Game paused due to visibility change', {
+      component: COMPONENT_NAME,
+      context: { eventType: e.type },
+    });
   } else if (!state.crashed) {
     if (trexRef) {
       trexRef.reset();
     }
     play();
+
+    logger.debug(ModuleType.GAME, EventType.RESUME, 'Game resumed after visibility change', {
+      component: COMPONENT_NAME,
+    });
   }
 }
 
-// 组件挂载时初始化
+// Component lifecycle
 onMount(() => {
-  // 确保Runner.imageSprite可用
+  logComponentMount(COMPONENT_NAME, { container: !!container });
+
+  // Ensure Runner.imageSprite is available
   (window as any).Runner = (window as any).Runner || {};
   (window as any).Runner.imageSprite = IS_HIDPI
     ? document.getElementById('offline-resources-2x')
     : document.getElementById('offline-resources-1x');
 
+  if (!(window as any).Runner.imageSprite) {
+    logger.error(ModuleType.GAME, EventType.ERROR, 'Sprite image not found', {
+      component: COMPONENT_NAME,
+      errorCode: ErrorCode.SPRITE_LOAD_FAILED,
+      context: { isHIDPI: IS_HIDPI },
+    });
+  }
+
   init();
 });
 
-// 组件销毁时清理
+// Component cleanup
 onDestroy(() => {
   stopListening();
   stop();
   if (resizeTimerId) {
     clearInterval(resizeTimerId);
   }
+
+  logComponentUnmount(COMPONENT_NAME, {
+    finalState: {
+      playCount: state.playCount,
+      highestScore: state.highestScore,
+      distanceRan: state.distanceRan,
+    },
+  });
+
+  logger.clearComponentContext(COMPONENT_NAME);
+
+  logger.info(ModuleType.GAME, EventType.DESTROY, 'Game component destroyed', {
+    component: COMPONENT_NAME,
+  });
 });
 </script>
 

@@ -7,7 +7,7 @@ import { IS_IOS } from '../config/gameConfig';
  * @param max 最大值
  * @returns 随机数
  */
-export function getRandomNum(min: number, max: number): number {
+export function getRandomNum (min: number, max: number): number {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
@@ -15,7 +15,7 @@ export function getRandomNum(min: number, max: number): number {
  * 移动设备振动
  * @param duration 振动持续时间（毫秒）
  */
-export function vibrate(duration: number): void {
+export function vibrate (duration: number): void {
   if (
     typeof window !== 'undefined' &&
     window.navigator &&
@@ -33,7 +33,7 @@ export function vibrate(duration: number): void {
  * @param opt_classname 可选类名
  * @returns Canvas元素
  */
-export function createCanvas(
+export function createCanvas (
   container: HTMLElement,
   width: number,
   height: number,
@@ -54,7 +54,7 @@ export function createCanvas(
  * @param base64String Base64字符串
  * @returns ArrayBuffer
  */
-export function decodeBase64ToArrayBuffer(base64String: string): ArrayBuffer {
+export function decodeBase64ToArrayBuffer (base64String: string): ArrayBuffer {
   const len = (base64String.length / 4) * 3;
   const str = atob(base64String);
   const arrayBuffer = new ArrayBuffer(len);
@@ -70,7 +70,7 @@ export function decodeBase64ToArrayBuffer(base64String: string): ArrayBuffer {
  * 获取当前时间戳
  * @returns 时间戳
  */
-export function getTimeStamp(): number {
+export function getTimeStamp (): number {
   return IS_IOS ? new Date().getTime() : performance.now();
 }
 
@@ -81,7 +81,7 @@ export function getTimeStamp(): number {
  * @param opt_canvasCtx 可选的Canvas上下文，用于绘制碰撞盒
  * @returns 碰撞盒数组或false
  */
-export function checkForCollision(
+export function checkForCollision (
   obstacle: Obstacle,
   tRex: Trex,
   opt_canvasCtx?: CanvasRenderingContext2D
@@ -147,7 +147,7 @@ export function checkForCollision(
  * @param adjustment 调整盒
  * @returns 调整后的碰撞盒
  */
-export function createAdjustedCollisionBox(
+export function createAdjustedCollisionBox (
   box: CollisionBox,
   adjustment: CollisionBox
 ): CollisionBox {
@@ -165,7 +165,7 @@ export function createAdjustedCollisionBox(
  * @param tRexBox 霸王龙碰撞盒
  * @param obstacleBox 障碍物碰撞盒
  */
-export function drawCollisionBoxes(
+export function drawCollisionBoxes (
   canvasCtx: CanvasRenderingContext2D,
   tRexBox: CollisionBox,
   obstacleBox: CollisionBox
@@ -190,7 +190,7 @@ export function drawCollisionBoxes(
  * @param obstacleBox 障碍物碰撞盒
  * @returns 是否碰撞
  */
-export function boxCompare(
+export function boxCompare (
   tRexBox: CollisionBox,
   obstacleBox: CollisionBox
 ): boolean {
@@ -226,7 +226,7 @@ export const TrexCollisionBoxes = {
  * @param opt_height 可选高度
  * @returns 是否缩放
  */
-export function updateCanvasScaling(
+export function updateCanvasScaling (
   canvas: HTMLCanvasElement,
   opt_width?: number,
   opt_height?: number
