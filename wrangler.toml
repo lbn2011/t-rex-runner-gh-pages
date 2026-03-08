@@ -2,9 +2,14 @@
 name = "trex-runner"
 compatibility_date = "2026-03-08"
 
-# Build settings - Pages projects use these settings from the dashboard
-# Build command: pnpm run build
-# Build output directory: dist
+# Static assets configuration
+[assets]
+directory = "./dist"
+
+# Custom domain configuration
+[[routes]]
+pattern = "lbnaxx.dpdns.org"
+custom_domain = true
 
 # Environment variables
 [env.production]
@@ -12,3 +17,9 @@ name = "trex-runner-prod"
 
 [env.staging]
 name = "trex-runner-staging"
+
+# 关闭 workers.dev 子域名
+workers_dev = false
+
+# 关闭预览 URL
+preview_urls = false
