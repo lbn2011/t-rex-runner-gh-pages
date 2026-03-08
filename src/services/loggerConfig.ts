@@ -26,6 +26,9 @@ export enum ModuleType {
   AUDIO = 'audio',
   UI = 'ui',
   STATE = 'state',
+
+  // Storage module
+  STORAGE = 'storage',
 }
 
 /**
