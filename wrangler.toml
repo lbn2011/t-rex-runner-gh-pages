@@ -1,5 +1,5 @@
 # Cloudflare Pages configuration for T-Rex Runner
-name = "trex-runner"
+name = "t-rex-runner-gh-pages"
 compatibility_date = "2026-03-08"
 
 # Static assets configuration
